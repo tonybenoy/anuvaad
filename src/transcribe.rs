@@ -135,7 +135,14 @@ pub fn spawn_worker(
         let threads = (num_cpus::get() as i32).clamp(1, 8);
         let mut procs: HashMap<Source, SourceProc> = streams
             .iter()
-            .map(|(s, _)| (*s, SourceProc { committed_until_s: 0.0 }))
+            .map(|(s, _)| {
+                (
+                    *s,
+                    SourceProc {
+                        committed_until_s: 0.0,
+                    },
+                )
+            })
             .collect();
 
         loop {
@@ -242,7 +249,9 @@ fn process_window(
     let mut new_provisional: Vec<TranscriptLine> = Vec::new();
 
     for i in 0..n {
-        let Some(seg) = state.get_segment(i) else { continue };
+        let Some(seg) = state.get_segment(i) else {
+            continue;
+        };
         let text = seg.to_str_lossy().unwrap_or_default();
         let trimmed = text.trim();
         if trimmed.is_empty() || is_noise(trimmed) {

@@ -55,7 +55,10 @@ pub fn write_metadata(
             "tgt": translate_tgt
         }
     });
-    fs::write(session_dir.join("session.json"), serde_json::to_string_pretty(&json)?)
+    fs::write(
+        session_dir.join("session.json"),
+        serde_json::to_string_pretty(&json)?,
+    )
 }
 
 pub fn discover(root: &Path) -> Vec<SessionMeta> {

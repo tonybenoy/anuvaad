@@ -47,12 +47,16 @@ impl Translator {
             .read_line(&mut ready_line)
             .map_err(|e| format!("read ready: {e}"))?;
         let trimmed = ready_line.trim();
-        let ready: serde_json::Value = serde_json::from_str(trimmed)
-            .map_err(|e| format!("parse ready ({trimmed:?}): {e}"))?;
+        let ready: serde_json::Value =
+            serde_json::from_str(trimmed).map_err(|e| format!("parse ready ({trimmed:?}): {e}"))?;
         if let Some(err) = ready.get("error").and_then(|v| v.as_str()) {
             return Err(err.to_string());
         }
-        if !ready.get("ready").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if !ready
+            .get("ready")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             return Err(format!("translator not ready: {trimmed}"));
         }
         let device = ready

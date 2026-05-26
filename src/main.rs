@@ -103,9 +103,7 @@ impl Default for AudioRecorder {
             .and_then(|n| out_devices.iter().position(|(name, _)| name == n))
             .unwrap_or(0);
 
-        let model_path = model::default_model_path()
-            .to_string_lossy()
-            .into_owned();
+        let model_path = model::default_model_path().to_string_lossy().into_owned();
         let model_exists = std::path::Path::new(&model_path).exists();
 
         Self {
@@ -224,10 +222,12 @@ impl AudioRecorder {
                     trans_tx,
                     self.translation_cfg.clone(),
                 ));
-                self.status = format!("Recording + transcribing ({})…", self.transcribe_mode.label());
+                self.status = format!(
+                    "Recording + transcribing ({})…",
+                    self.transcribe_mode.label()
+                );
             } else {
-                self.status =
-                    "Recording (no transcription — model not loaded)…".to_string();
+                self.status = "Recording (no transcription — model not loaded)…".to_string();
             }
         } else {
             self.status = "Recording (transcription off)…".to_string();
@@ -280,9 +280,11 @@ impl AudioRecorder {
                     .map(|(n, _)| n.as_str())
                     .unwrap_or("?");
                 let cfg = self.translation_cfg.lock().ok().map(|g| g.clone());
-                let (te, tsrc, ttgt) = cfg
-                    .map(|c| (c.enabled, c.src, c.tgt))
-                    .unwrap_or((false, String::new(), String::new()));
+                let (te, tsrc, ttgt) = cfg.map(|c| (c.enabled, c.src, c.tgt)).unwrap_or((
+                    false,
+                    String::new(),
+                    String::new(),
+                ));
                 let _ = sessions::write_metadata(
                     session_dir,
                     &id,
@@ -330,7 +332,11 @@ impl AudioRecorder {
             .chain(t.provisional_mic.iter())
             .chain(t.provisional_sys.iter())
             .collect();
-        all.sort_by(|a, b| a.start_s.partial_cmp(&b.start_s).unwrap_or(std::cmp::Ordering::Equal));
+        all.sort_by(|a, b| {
+            a.start_s
+                .partial_cmp(&b.start_s)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         for line in all {
             writeln!(
                 f,
@@ -355,10 +361,7 @@ impl AudioRecorder {
         }
 
         ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(format!("📂 {}", self.output_dir))
-                    .color(TEXT_DIM),
-            );
+            ui.label(egui::RichText::new(format!("📂 {}", self.output_dir)).color(TEXT_DIM));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Open folder").clicked() {
                     let _ = std::process::Command::new("explorer")
@@ -366,8 +369,7 @@ impl AudioRecorder {
                         .spawn();
                 }
                 if ui.button("🔄 Refresh").clicked() {
-                    self.session_cache =
-                        sessions::discover(std::path::Path::new(&self.output_dir));
+                    self.session_cache = sessions::discover(std::path::Path::new(&self.output_dir));
                     self.selected_session = None;
                     self.selected_transcript = None;
                 }
@@ -383,10 +385,7 @@ impl AudioRecorder {
                         .size(16.0)
                         .color(TEXT_DIM),
                 );
-                ui.label(
-                    egui::RichText::new("Switch to 🎙 Record and create one.")
-                        .color(TEXT_DIM),
-                );
+                ui.label(egui::RichText::new("Switch to 🎙 Record and create one.").color(TEXT_DIM));
             });
             return;
         }
@@ -398,25 +397,22 @@ impl AudioRecorder {
                 egui::vec2(280.0, total_h),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    egui::Frame::group(ui.style())
-                        .fill(SURFACE)
-                        .show(ui, |ui| {
-                            egui::ScrollArea::vertical()
-                                .id_salt("sess_list")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    for i in 0..self.session_cache.len() {
-                                        let s = &self.session_cache[i];
-                                        let selected = Some(i) == self.selected_session;
-                                        let resp = session_card(ui, s, selected);
-                                        if resp.clicked() {
-                                            self.selected_session = Some(i);
-                                            self.selected_transcript =
-                                                sessions::read_transcript(s);
-                                        }
+                    egui::Frame::group(ui.style()).fill(SURFACE).show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("sess_list")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for i in 0..self.session_cache.len() {
+                                    let s = &self.session_cache[i];
+                                    let selected = Some(i) == self.selected_session;
+                                    let resp = session_card(ui, s, selected);
+                                    if resp.clicked() {
+                                        self.selected_session = Some(i);
+                                        self.selected_transcript = sessions::read_transcript(s);
                                     }
-                                });
-                        });
+                                }
+                            });
+                    });
                 },
             );
 
@@ -436,8 +432,7 @@ impl AudioRecorder {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(60.0);
                                 ui.label(
-                                    egui::RichText::new("Select a session to view")
-                                        .color(TEXT_DIM),
+                                    egui::RichText::new("Select a session to view").color(TEXT_DIM),
                                 );
                             });
                         }
@@ -448,14 +443,21 @@ impl AudioRecorder {
     }
 
     fn start_translator(&mut self) {
-        if self.translator.lock().ok().map(|g| g.is_some()).unwrap_or(false) {
+        if self
+            .translator
+            .lock()
+            .ok()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
+        {
             return;
         }
         if *self.translator_loading.lock().unwrap() {
             return;
         }
         *self.translator_loading.lock().unwrap() = true;
-        *self.translator_status.lock().unwrap() = "Starting translator (first run may download ~600MB)…".to_string();
+        *self.translator_status.lock().unwrap() =
+            "Starting translator (first run may download ~600MB)…".to_string();
 
         let translator_slot = self.translator.clone();
         let loading_flag = self.translator_loading.clone();
@@ -763,7 +765,11 @@ impl eframe::App for AudioRecorder {
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
-                let label = if self.recording { "⏹  Stop" } else { "⏺  Record" };
+                let label = if self.recording {
+                    "⏹  Stop"
+                } else {
+                    "⏺  Record"
+                };
                 let btn = egui::Button::new(label).min_size(egui::vec2(120.0, 32.0));
                 if ui.add(btn).clicked() {
                     if self.recording {
@@ -830,7 +836,11 @@ impl eframe::App for AudioRecorder {
 }
 
 fn session_card(ui: &mut egui::Ui, s: &SessionMeta, selected: bool) -> egui::Response {
-    let fill = if selected { SURFACE_ALT } else { egui::Color32::TRANSPARENT };
+    let fill = if selected {
+        SURFACE_ALT
+    } else {
+        egui::Color32::TRANSPARENT
+    };
     let frame = egui::Frame::none()
         .fill(fill)
         .inner_margin(egui::Margin::symmetric(10, 8))
@@ -983,8 +993,9 @@ fn render_line(ui: &mut egui::Ui, line: &TranscriptLine, provisional: bool) {
     };
     ui.horizontal_wrapped(|ui| {
         ui.monospace(
-            egui::RichText::new(format!("[{:>6.1}s]", line.start_s))
-                .color(egui::Color32::from_gray(if provisional { 110 } else { 170 })),
+            egui::RichText::new(format!("[{:>6.1}s]", line.start_s)).color(
+                egui::Color32::from_gray(if provisional { 110 } else { 170 }),
+            ),
         );
         ui.label(egui::RichText::new(format!("[{}]", line.source.tag())).color(tag_color));
         ui.label(egui::RichText::new(&line.text).color(text_color));

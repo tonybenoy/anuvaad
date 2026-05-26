@@ -51,8 +51,7 @@ pub fn download_model_async(dest: PathBuf, url: String) -> DownloadHandle {
             }
             let mut body = resp.into_body();
             let mut reader = body.as_reader();
-            let mut file =
-                BufWriter::new(File::create(&tmp).map_err(|x| format!("create: {x}"))?);
+            let mut file = BufWriter::new(File::create(&tmp).map_err(|x| format!("create: {x}"))?);
             let mut buf = vec![0u8; 64 * 1024];
             loop {
                 let n = reader.read(&mut buf).map_err(|x| format!("read: {x}"))?;

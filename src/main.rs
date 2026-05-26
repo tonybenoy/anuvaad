@@ -76,6 +76,8 @@ struct AudioRecorder {
     selected_transcript: Option<String>,
     compact_always_on_top: bool,
     pending_view_switch: Option<ViewMode>,
+    rename_buffer: String,
+    rename_target_id: Option<String>,
 }
 
 impl Default for AudioRecorder {
@@ -146,6 +148,8 @@ impl Default for AudioRecorder {
             selected_transcript: None,
             compact_always_on_top: true,
             pending_view_switch: None,
+            rename_buffer: String::new(),
+            rename_target_id: None,
         }
     }
 }
@@ -285,19 +289,19 @@ impl AudioRecorder {
                     .map(|(n, _)| n.as_str())
                     .unwrap_or("?");
                 let cfg = self.translation_cfg.lock().ok().map(|g| g.clone());
-                let (te, tsrc, ttgt) = cfg.map(|c| (c.enabled, c.src, c.tgt)).unwrap_or((
-                    false,
-                    String::new(),
-                    String::new(),
-                ));
+                let (te, tsrc, ttgt, wlang) = cfg
+                    .map(|c| (c.enabled, c.src, c.tgt, c.whisper_lang))
+                    .unwrap_or((false, String::new(), String::new(), None));
                 let _ = sessions::write_metadata(
                     session_dir,
                     &id,
+                    None,
                     &started_iso,
                     duration_s,
                     mic_dev,
                     sys_dev,
                     self.transcribe_mode.label(),
+                    wlang.as_deref(),
                     te,
                     &tsrc,
                     &ttgt,
@@ -544,7 +548,10 @@ impl AudioRecorder {
                         if let Some(i) = self.selected_session {
                             let s = self.session_cache[i].clone();
                             let transcript = self.selected_transcript.clone();
-                            render_session_detail(ui, &s, transcript.as_deref());
+                            let action = self.render_session_detail(ui, &s, transcript.as_deref());
+                            if let Some(act) = action {
+                                self.apply_session_action(act, &s);
+                            }
                         } else {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(60.0);
@@ -1076,12 +1083,16 @@ fn session_card(ui: &mut egui::Ui, s: &SessionMeta, selected: bool) -> egui::Res
         .show(ui, |ui| {
             ui.vertical(|ui| {
                 let title_color = if selected { ACCENT } else { TEXT };
+                let title = s.label.clone().unwrap_or_else(|| s.id.clone());
                 ui.label(
-                    egui::RichText::new(&s.id)
+                    egui::RichText::new(&title)
                         .strong()
                         .color(title_color)
                         .size(13.0),
                 );
+                if s.label.is_some() {
+                    ui.label(egui::RichText::new(&s.id).size(10.0).color(TEXT_DIM));
+                }
                 let mins = (s.duration_s / 60.0).floor() as u32;
                 let secs = (s.duration_s % 60.0).round() as u32;
                 let dur = if mins > 0 {
@@ -1115,74 +1126,152 @@ fn session_card(ui: &mut egui::Ui, s: &SessionMeta, selected: bool) -> egui::Res
     r
 }
 
-fn render_session_detail(ui: &mut egui::Ui, s: &SessionMeta, transcript: Option<&str>) {
-    ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(&s.id).strong().size(18.0).color(ACCENT));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("📁 Folder").clicked() {
-                let _ = std::process::Command::new("explorer").arg(&s.dir).spawn();
-            }
-            if s.has_sys && ui.button("🔊 System").clicked() {
-                play_with_default(&s.sys_wav());
-            }
-            if s.has_mic && ui.button("🔊 Mic").clicked() {
-                play_with_default(&s.mic_wav());
-            }
-        });
-    });
-    ui.add_space(6.0);
+enum SessionAction {
+    Rename(String),
+}
 
-    egui::Grid::new("meta")
-        .num_columns(2)
-        .spacing([12.0, 4.0])
-        .show(ui, |ui| {
-            meta_row(ui, "Started", &s.started);
-            meta_row(ui, "Duration", &format!("{:.1} s", s.duration_s));
-            meta_row(ui, "Mode", &s.transcribe_mode);
-            meta_row(ui, "Mic device", &s.mic_device);
-            meta_row(ui, "System device", &s.sys_device);
-            if s.translate_enabled {
-                meta_row(
-                    ui,
-                    "Translation",
-                    &format!("{} → {}", s.translate_src, s.translate_tgt),
-                );
-            }
-        });
-
-    ui.add_space(10.0);
-    ui.separator();
-    ui.add_space(6.0);
-    ui.label(egui::RichText::new("Transcript").strong().color(TEXT_DIM));
-    ui.add_space(4.0);
-
-    egui::ScrollArea::vertical()
-        .id_salt("transcript_view")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            if let Some(text) = transcript {
-                if text.trim().is_empty() {
-                    ui.weak("(empty transcript)");
+impl AudioRecorder {
+    fn apply_session_action(&mut self, action: SessionAction, session: &SessionMeta) {
+        match action {
+            SessionAction::Rename(new_label) => {
+                let label_opt = if new_label.trim().is_empty() {
+                    None
                 } else {
-                    for line in text.lines() {
-                        let trimmed = line.trim_start();
-                        if trimmed.starts_with("→") {
-                            ui.label(
-                                egui::RichText::new(line)
-                                    .italics()
-                                    .color(TRANS_COLOR)
-                                    .monospace(),
-                            );
-                        } else {
-                            ui.monospace(line);
-                        }
-                    }
+                    Some(new_label.trim().to_string())
+                };
+                if let Err(e) = sessions::set_label(&session.dir, label_opt.as_deref()) {
+                    self.status = format!("Rename failed: {e}");
+                } else {
+                    self.session_cache_dir.clear(); // trigger rescan
+                    self.status = "Session renamed".to_string();
+                }
+                self.rename_target_id = None;
+                self.rename_buffer.clear();
+            }
+        }
+    }
+
+    fn render_session_detail(
+        &mut self,
+        ui: &mut egui::Ui,
+        s: &SessionMeta,
+        transcript: Option<&str>,
+    ) -> Option<SessionAction> {
+        let mut action: Option<SessionAction> = None;
+        ui.add_space(8.0);
+
+        let editing = self.rename_target_id.as_deref() == Some(s.id.as_str());
+        ui.horizontal(|ui| {
+            if editing {
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut self.rename_buffer)
+                        .desired_width(280.0)
+                        .hint_text("session label"),
+                );
+                let submit = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if submit || ui.button("✓").clicked() {
+                    action = Some(SessionAction::Rename(self.rename_buffer.clone()));
+                }
+                if ui.button("✕").clicked() {
+                    self.rename_target_id = None;
+                    self.rename_buffer.clear();
                 }
             } else {
-                ui.weak("(no transcript file in this session)");
+                let display = s.label.clone().unwrap_or_else(|| s.id.clone());
+                ui.label(
+                    egui::RichText::new(&display)
+                        .strong()
+                        .size(18.0)
+                        .color(ACCENT),
+                );
+                if s.label.is_some() {
+                    ui.label(
+                        egui::RichText::new(format!("({})", s.id))
+                            .size(11.0)
+                            .color(TEXT_DIM),
+                    );
+                }
+                if ui
+                    .small_button("✏")
+                    .on_hover_text("Rename session")
+                    .clicked()
+                {
+                    self.rename_buffer = s.label.clone().unwrap_or_default();
+                    self.rename_target_id = Some(s.id.clone());
+                }
             }
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("📁 Folder").clicked() {
+                    let _ = std::process::Command::new("explorer").arg(&s.dir).spawn();
+                }
+                if s.has_sys && ui.button("🔊 System").clicked() {
+                    play_with_default(&s.sys_wav());
+                }
+                if s.has_mic && ui.button("🔊 Mic").clicked() {
+                    play_with_default(&s.mic_wav());
+                }
+            });
         });
+        ui.add_space(6.0);
+
+        egui::Grid::new("meta")
+            .num_columns(2)
+            .spacing([12.0, 4.0])
+            .show(ui, |ui| {
+                meta_row(ui, "Started", &s.started);
+                meta_row(ui, "Duration", &format!("{:.1} s", s.duration_s));
+                meta_row(ui, "Mode", &s.transcribe_mode);
+                if let Some(wl) = &s.whisper_lang {
+                    meta_row(ui, "Whisper language", wl);
+                } else {
+                    meta_row(ui, "Whisper language", "(auto-detect)");
+                }
+                meta_row(ui, "Mic device", &s.mic_device);
+                meta_row(ui, "System device", &s.sys_device);
+                if s.translate_enabled {
+                    meta_row(
+                        ui,
+                        "Translation",
+                        &format!("{} → {}", s.translate_src, s.translate_tgt),
+                    );
+                }
+            });
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new("Transcript").strong().color(TEXT_DIM));
+        ui.add_space(4.0);
+
+        egui::ScrollArea::vertical()
+            .id_salt("transcript_view")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if let Some(text) = transcript {
+                    if text.trim().is_empty() {
+                        ui.weak("(empty transcript)");
+                    } else {
+                        for line in text.lines() {
+                            let trimmed = line.trim_start();
+                            if trimmed.starts_with("→") {
+                                ui.label(
+                                    egui::RichText::new(line)
+                                        .italics()
+                                        .color(TRANS_COLOR)
+                                        .monospace(),
+                                );
+                            } else {
+                                ui.monospace(line);
+                            }
+                        }
+                    }
+                } else {
+                    ui.weak("(no transcript file in this session)");
+                }
+            });
+        action
+    }
 }
 
 fn meta_row(ui: &mut egui::Ui, label: &str, value: &str) {

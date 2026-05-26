@@ -4,12 +4,14 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Debug)]
 pub struct SessionMeta {
     pub id: String,
+    pub label: Option<String>,
     pub dir: PathBuf,
     pub started: String,
     pub duration_s: f64,
     pub mic_device: String,
     pub sys_device: String,
     pub transcribe_mode: String,
+    pub whisper_lang: Option<String>,
     pub translate_enabled: bool,
     pub translate_src: String,
     pub translate_tgt: String,
@@ -30,25 +32,30 @@ impl SessionMeta {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_metadata(
     session_dir: &Path,
     id: &str,
+    label: Option<&str>,
     started_iso: &str,
     duration_s: f64,
     mic_device: &str,
     sys_device: &str,
     transcribe_mode: &str,
+    whisper_lang: Option<&str>,
     translate_enabled: bool,
     translate_src: &str,
     translate_tgt: &str,
 ) -> std::io::Result<()> {
     let json = serde_json::json!({
         "id": id,
+        "label": label,
         "started": started_iso,
         "duration_s": duration_s,
         "mic_device": mic_device,
         "sys_device": sys_device,
         "transcribe_mode": transcribe_mode,
+        "whisper_lang": whisper_lang,
         "translation": {
             "enabled": translate_enabled,
             "src": translate_src,
@@ -59,6 +66,26 @@ pub fn write_metadata(
         session_dir.join("session.json"),
         serde_json::to_string_pretty(&json)?,
     )
+}
+
+/// Update only the label field in an existing session.json (preserves other fields).
+pub fn set_label(session_dir: &Path, label: Option<&str>) -> std::io::Result<()> {
+    let path = session_dir.join("session.json");
+    let mut json: serde_json::Value = fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = json.as_object_mut() {
+        match label {
+            Some(l) if !l.is_empty() => {
+                obj.insert("label".into(), serde_json::Value::String(l.into()));
+            }
+            _ => {
+                obj.remove("label");
+            }
+        }
+    }
+    fs::write(path, serde_json::to_string_pretty(&json)?)
 }
 
 pub fn discover(root: &Path) -> Vec<SessionMeta> {
@@ -125,15 +152,27 @@ pub fn discover(root: &Path) -> Vec<SessionMeta> {
             .and_then(|v| v.get("tgt").and_then(|x| x.as_str()))
             .unwrap_or("")
             .to_string();
+        let label = meta_json
+            .as_ref()
+            .and_then(|v| v.get("label").and_then(|x| x.as_str()))
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+        let whisper_lang = meta_json
+            .as_ref()
+            .and_then(|v| v.get("whisper_lang").and_then(|x| x.as_str()))
+            .filter(|s| !s.is_empty())
+            .map(String::from);
 
         out.push(SessionMeta {
             id,
+            label,
             dir: path,
             started,
             duration_s,
             mic_device,
             sys_device,
             transcribe_mode,
+            whisper_lang,
             translate_enabled,
             translate_src,
             translate_tgt,

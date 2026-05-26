@@ -519,14 +519,15 @@ impl AudioRecorder {
     }
 
     fn start_download(&mut self) {
+        self.start_download_url(model::MODEL_URL.to_string());
+    }
+
+    fn start_download_url(&mut self, url: String) {
         if self.download.is_some() {
             return;
         }
         let dest = PathBuf::from(&self.model_path);
-        self.download = Some(model::download_model_async(
-            dest,
-            model::MODEL_URL.to_string(),
-        ));
+        self.download = Some(model::download_model_async(dest, url));
         self.status = "Downloading model…".to_string();
     }
 
@@ -637,11 +638,50 @@ impl eframe::App for AudioRecorder {
             });
 
             ui.horizontal(|ui| {
+                ui.label("Audio language:");
+                let mut cfg = self.translation_cfg.lock().unwrap();
+                // The selected entry is either Auto (when whisper_lang is None) or matches whisper code.
+                let current_idx = if cfg.whisper_lang.is_none() {
+                    0
+                } else {
+                    LANGUAGES
+                        .iter()
+                        .position(|l| {
+                            !l.whisper.is_empty()
+                                && Some(l.whisper) == cfg.whisper_lang.as_deref()
+                                && l.nllb == cfg.src
+                        })
+                        .or_else(|| {
+                            LANGUAGES
+                                .iter()
+                                .position(|l| Some(l.whisper) == cfg.whisper_lang.as_deref())
+                        })
+                        .unwrap_or(0)
+                };
+                let current_label = LANGUAGES[current_idx].name;
+                egui::ComboBox::from_id_salt("audiolang")
+                    .selected_text(current_label)
+                    .width(220.0)
+                    .show_ui(ui, |ui| {
+                        for (i, l) in LANGUAGES.iter().enumerate() {
+                            if ui.selectable_label(i == current_idx, l.name).clicked() {
+                                if l.whisper.is_empty() {
+                                    cfg.whisper_lang = None;
+                                } else {
+                                    cfg.whisper_lang = Some(l.whisper.to_string());
+                                }
+                                cfg.src = l.nllb.to_string();
+                            }
+                        }
+                    });
+                drop(cfg);
+
+                ui.label("·");
                 ui.label("Transcribe:");
                 let cur = self.transcribe_mode.label();
                 egui::ComboBox::from_id_salt("xmode")
                     .selected_text(cur)
-                    .width(200.0)
+                    .width(180.0)
                     .show_ui(ui, |ui| {
                         for m in [
                             TranscribeMode::Off,
@@ -652,7 +692,6 @@ impl eframe::App for AudioRecorder {
                             ui.selectable_value(&mut self.transcribe_mode, m, m.label());
                         }
                     });
-                ui.weak("(WAV files are saved for both regardless)");
             });
 
             ui.horizontal(|ui| {
@@ -668,40 +707,26 @@ impl eframe::App for AudioRecorder {
                 let prev_enabled = cfg.enabled;
                 ui.checkbox(&mut cfg.enabled, "Translate");
 
-                let src_label = LANGUAGES
-                    .iter()
-                    .find(|(c, _)| *c == cfg.src)
-                    .map(|(_, n)| *n)
-                    .unwrap_or("?");
-                egui::ComboBox::from_id_salt("trsrc")
-                    .selected_text(format!("from {src_label}"))
-                    .width(180.0)
-                    .show_ui(ui, |ui| {
-                        for (code, name) in LANGUAGES {
-                            let mut sel = cfg.src == *code;
-                            if ui.selectable_label(sel, *name).clicked() {
-                                cfg.src = code.to_string();
-                                sel = true;
-                            }
-                            let _ = sel;
-                        }
-                    });
-
-                let tgt_label = LANGUAGES
-                    .iter()
-                    .find(|(c, _)| *c == cfg.tgt)
-                    .map(|(_, n)| *n)
+                let tgt_label = translator::find_by_nllb(&cfg.tgt)
+                    .map(|l| l.name)
                     .unwrap_or("?");
                 egui::ComboBox::from_id_salt("trtgt")
                     .selected_text(format!("→ {tgt_label}"))
-                    .width(180.0)
+                    .width(200.0)
                     .show_ui(ui, |ui| {
-                        for (code, name) in LANGUAGES {
-                            if ui.selectable_label(cfg.tgt == *code, *name).clicked() {
-                                cfg.tgt = code.to_string();
+                        for l in LANGUAGES.iter().filter(|l| !l.whisper.is_empty()) {
+                            if ui.selectable_label(cfg.tgt == l.nllb, l.name).clicked() {
+                                cfg.tgt = l.nllb.to_string();
                             }
                         }
                     });
+
+                if cfg.enabled && cfg.whisper_lang.is_none() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(220, 180, 100),
+                        "⚠ pick an audio language",
+                    );
+                }
 
                 drop(cfg);
 
@@ -713,7 +738,6 @@ impl eframe::App for AudioRecorder {
                     self.start_translator();
                 }
 
-                // re-read enabled to detect change for ensuring translator started
                 let enabled_now = self.translation_cfg.lock().unwrap().enabled;
                 if enabled_now && !prev_enabled && !translator_ready && !loading {
                     self.start_translator();
@@ -728,8 +752,33 @@ impl eframe::App for AudioRecorder {
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
-                ui.label("Model:");
-                ui.add(egui::TextEdit::singleline(&mut self.model_path).desired_width(400.0));
+                ui.label("Whisper model:");
+                let current_size_idx = model::MODEL_SIZES
+                    .iter()
+                    .position(|s| self.model_path == model::model_path_for(s.key).to_string_lossy())
+                    .unwrap_or(1);
+                let label = model::MODEL_SIZES[current_size_idx].display;
+                egui::ComboBox::from_id_salt("modelsize")
+                    .selected_text(label)
+                    .width(360.0)
+                    .show_ui(ui, |ui| {
+                        for (i, s) in model::MODEL_SIZES.iter().enumerate() {
+                            if ui
+                                .selectable_label(i == current_size_idx, s.display)
+                                .clicked()
+                            {
+                                let new_path = model::model_path_for(s.key)
+                                    .to_string_lossy()
+                                    .into_owned();
+                                if new_path != self.model_path {
+                                    self.model_path = new_path;
+                                    self.whisper = None;
+                                    self.whisper_path_loaded = None;
+                                    self.autoloaded = false;
+                                }
+                            }
+                        }
+                    });
                 if self.model_loaded() {
                     ui.colored_label(egui::Color32::from_rgb(80, 200, 120), "✔ loaded");
                 } else if ui.button("Load").clicked() {
@@ -737,10 +786,28 @@ impl eframe::App for AudioRecorder {
                 }
             });
             ui.horizontal(|ui| {
+                ui.label("Path:");
+                ui.add(egui::TextEdit::singleline(&mut self.model_path).desired_width(420.0));
+            });
+            ui.horizontal(|ui| {
                 let exists = std::path::Path::new(&self.model_path).exists();
+                let cur_size = model::MODEL_SIZES
+                    .iter()
+                    .find(|s| self.model_path == model::model_path_for(s.key).to_string_lossy())
+                    .map(|s| (s.key, s.approx_mb));
                 if !exists && self.download.is_none() {
-                    if ui.button("⬇ Download base model (~140 MB)").clicked() {
-                        self.start_download();
+                    let (lbl, url) = match cur_size {
+                        Some((key, mb)) => (
+                            format!("⬇ Download {key} model (~{mb} MB)"),
+                            model::model_url_for(key),
+                        ),
+                        None => (
+                            "⬇ Download base model (~140 MB)".to_string(),
+                            model::MODEL_URL.to_string(),
+                        ),
+                    };
+                    if ui.button(lbl).clicked() {
+                        self.start_download_url(url);
                     }
                 }
                 if let Some(dl) = &self.download {

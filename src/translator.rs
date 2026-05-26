@@ -154,37 +154,49 @@ impl Drop for Translator {
     }
 }
 
-/// NLLB language code (BCP-47 + script) and a friendly display name.
-pub const LANGUAGES: &[(&str, &str)] = &[
-    ("eng_Latn", "English"),
-    ("hin_Deva", "Hindi"),
-    ("spa_Latn", "Spanish"),
-    ("fra_Latn", "French"),
-    ("deu_Latn", "German"),
-    ("ita_Latn", "Italian"),
-    ("por_Latn", "Portuguese"),
-    ("rus_Cyrl", "Russian"),
-    ("zho_Hans", "Chinese (Simplified)"),
-    ("zho_Hant", "Chinese (Traditional)"),
-    ("jpn_Jpan", "Japanese"),
-    ("kor_Hang", "Korean"),
-    ("arb_Arab", "Arabic"),
-    ("ben_Beng", "Bengali"),
-    ("tam_Taml", "Tamil"),
-    ("tel_Telu", "Telugu"),
-    ("mar_Deva", "Marathi"),
-    ("urd_Arab", "Urdu"),
-    ("pan_Guru", "Punjabi"),
-    ("guj_Gujr", "Gujarati"),
-    ("kan_Knda", "Kannada"),
-    ("mal_Mlym", "Malayalam"),
-    ("nld_Latn", "Dutch"),
-    ("pol_Latn", "Polish"),
-    ("tur_Latn", "Turkish"),
-    ("vie_Latn", "Vietnamese"),
-    ("ind_Latn", "Indonesian"),
-    ("tha_Thai", "Thai"),
-    ("ell_Grek", "Greek"),
-    ("heb_Hebr", "Hebrew"),
-    ("swh_Latn", "Swahili"),
+/// A language available in both Whisper (2-letter code) and NLLB (BCP-47 + script).
+pub struct Lang {
+    pub whisper: &'static str,
+    pub nllb: &'static str,
+    pub name: &'static str,
+}
+
+/// First entry is treated as "auto-detect" for Whisper purposes (empty whisper code).
+pub const LANGUAGES: &[Lang] = &[
+    Lang { whisper: "",   nllb: "eng_Latn", name: "Auto-detect" },
+    Lang { whisper: "en", nllb: "eng_Latn", name: "English" },
+    Lang { whisper: "hi", nllb: "hin_Deva", name: "Hindi" },
+    Lang { whisper: "es", nllb: "spa_Latn", name: "Spanish" },
+    Lang { whisper: "fr", nllb: "fra_Latn", name: "French" },
+    Lang { whisper: "de", nllb: "deu_Latn", name: "German" },
+    Lang { whisper: "it", nllb: "ita_Latn", name: "Italian" },
+    Lang { whisper: "pt", nllb: "por_Latn", name: "Portuguese" },
+    Lang { whisper: "ru", nllb: "rus_Cyrl", name: "Russian" },
+    Lang { whisper: "zh", nllb: "zho_Hans", name: "Chinese (Simplified)" },
+    Lang { whisper: "zh", nllb: "zho_Hant", name: "Chinese (Traditional)" },
+    Lang { whisper: "ja", nllb: "jpn_Jpan", name: "Japanese" },
+    Lang { whisper: "ko", nllb: "kor_Hang", name: "Korean" },
+    Lang { whisper: "ar", nllb: "arb_Arab", name: "Arabic" },
+    Lang { whisper: "bn", nllb: "ben_Beng", name: "Bengali" },
+    Lang { whisper: "ta", nllb: "tam_Taml", name: "Tamil" },
+    Lang { whisper: "te", nllb: "tel_Telu", name: "Telugu" },
+    Lang { whisper: "mr", nllb: "mar_Deva", name: "Marathi" },
+    Lang { whisper: "ur", nllb: "urd_Arab", name: "Urdu" },
+    Lang { whisper: "pa", nllb: "pan_Guru", name: "Punjabi" },
+    Lang { whisper: "gu", nllb: "guj_Gujr", name: "Gujarati" },
+    Lang { whisper: "kn", nllb: "kan_Knda", name: "Kannada" },
+    Lang { whisper: "ml", nllb: "mal_Mlym", name: "Malayalam" },
+    Lang { whisper: "nl", nllb: "nld_Latn", name: "Dutch" },
+    Lang { whisper: "pl", nllb: "pol_Latn", name: "Polish" },
+    Lang { whisper: "tr", nllb: "tur_Latn", name: "Turkish" },
+    Lang { whisper: "vi", nllb: "vie_Latn", name: "Vietnamese" },
+    Lang { whisper: "id", nllb: "ind_Latn", name: "Indonesian" },
+    Lang { whisper: "th", nllb: "tha_Thai", name: "Thai" },
+    Lang { whisper: "el", nllb: "ell_Grek", name: "Greek" },
+    Lang { whisper: "he", nllb: "heb_Hebr", name: "Hebrew" },
+    Lang { whisper: "sw", nllb: "swh_Latn", name: "Swahili" },
 ];
+
+pub fn find_by_nllb(code: &str) -> Option<&'static Lang> {
+    LANGUAGES.iter().find(|l| l.nllb == code)
+}

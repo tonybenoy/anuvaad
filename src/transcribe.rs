@@ -22,6 +22,8 @@ pub struct TranslationConfig {
     pub enabled: bool,
     pub src: String,
     pub tgt: String,
+    /// 2-letter Whisper language code, or None for auto-detect.
+    pub whisper_lang: Option<String>,
 }
 
 impl Default for TranslationConfig {
@@ -29,7 +31,8 @@ impl Default for TranslationConfig {
         Self {
             enabled: false,
             src: "eng_Latn".to_string(),
-            tgt: "hin_Deva".to_string(),
+            tgt: "eng_Latn".to_string(),
+            whisper_lang: None,
         }
     }
 }
@@ -221,9 +224,13 @@ fn process_window(
         return;
     }
 
+    let lang_str = translation_cfg
+        .lock()
+        .ok()
+        .and_then(|g| g.whisper_lang.clone());
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     params.set_n_threads(threads);
-    params.set_language(None);
+    params.set_language(lang_str.as_deref());
     params.set_translate(false);
     params.set_print_progress(false);
     params.set_print_special(false);

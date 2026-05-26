@@ -5,14 +5,42 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+pub struct ModelSize {
+    pub key: &'static str,
+    pub display: &'static str,
+    pub approx_mb: u32,
+}
+
+pub const MODEL_SIZES: &[ModelSize] = &[
+    ModelSize { key: "tiny",      display: "tiny (75 MB) — fastest",                  approx_mb: 75 },
+    ModelSize { key: "base",      display: "base (142 MB) — default",                 approx_mb: 142 },
+    ModelSize { key: "small",     display: "small (466 MB) — recommended for non-English", approx_mb: 466 },
+    ModelSize { key: "medium",    display: "medium (1.5 GB) — high accuracy",         approx_mb: 1500 },
+    ModelSize { key: "large-v3",  display: "large-v3 (3 GB) — best",                  approx_mb: 3000 },
+];
+
+pub fn models_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("anuvaad")
+        .join("models")
+}
+
+pub fn model_path_for(size_key: &str) -> PathBuf {
+    models_dir().join(format!("ggml-{size_key}.bin"))
+}
+
+pub fn model_url_for(size_key: &str) -> String {
+    format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size_key}.bin")
+}
+
+/// Back-compat helpers — pointed at the "base" size.
 pub const MODEL_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
 
 pub fn default_model_path() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("anuvaad").join("models").join("ggml-base.bin")
+    model_path_for("base")
 }
 
 pub struct DownloadHandle {

@@ -6,6 +6,10 @@ Real-time audio recorder, transcriber, and translator for Windows.
 - Transcribes both streams **live** with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (whisper-rs) — accelerated on NVIDIA GPUs.
 - Optionally **translates** committed lines between any of NLLB-200's ~200 languages via a Python subprocess (CTranslate2).
 - Sliding-window UI: provisional text appears in gray while audio is still arriving, then commits to a stable transcript.
+- One **audio language** picker drives both Whisper's source language and NLLB's source — pick Malayalam once and the whole pipeline knows.
+- **Whisper model size** dropdown — tiny / base / small / medium / large-v3, downloaded on demand.
+- **Sessions browser** — every recording goes into its own folder with WAVs, transcript, and metadata; the in-app browser lets you scroll back, replay, and read past transcripts.
+- **Compact mode** — shrink to a 360×220 always-on-top floating window showing only the recording state and recent lines.
 
 Documentation: **https://tonybenoy.github.io/anuvaad/**
 
@@ -31,10 +35,21 @@ The first time you toggle Translate on, the NLLB-200 model (~600 MB) is download
 |---|---|
 | **Mic capture** | Any input device, original channel count and sample rate, saved as 16-bit PCM WAV |
 | **System audio** | WASAPI loopback on the selected output device — captures whatever your speakers play |
-| **Transcription** | Whisper base by default (model path configurable); 99 source languages auto-detected |
-| **Streaming UX** | 1.2s update step, 5s rolling window, 2s provisional buffer |
-| **Translation** | NLLB-200 distilled 600M (int8), ~200 languages, runs locally via CTranslate2 |
-| **GPU** | Optional CUDA feature flag — falls back to CPU at runtime if no compatible GPU |
+| **Transcription** | whisper.cpp, picker for tiny / base / small / medium / large-v3 |
+| **Streaming UX** | 1.2s update step, 5s rolling window, 2s provisional buffer; committed text turns black, latest stays gray |
+| **Translation** | NLLB-200 distilled 600M (int8), ~200 languages, runs locally via CTranslate2 over a Python subprocess |
+| **Sessions** | Per-recording folders with `mic.wav` + `system.wav` + `transcript.txt` + `session.json`; in-app browser |
+| **Compact mode** | Tiny floating window, optional always-on-top, recent lines + record button |
+| **GPU** | Optional `--features cuda` — falls back to CPU at runtime if no compatible GPU |
+
+### Notes on accuracy
+
+- The **base** model is okay for clear English; for Indic / CJK speech, switch to **small** or higher. Malayalam in particular tends to be misidentified as Tamil on the base model.
+- Force the audio language explicitly when you know it — Whisper's auto-detect can drift between chunks.
+
+### Notes on rendering non-Latin scripts
+
+If transcripts show as square boxes, your Windows install is missing the relevant script fonts. Open *Settings → Time & Language → Language & region* and add the language (e.g. *Tamil*, *Malayalam*) — Windows downloads the matching font pack. Anuvaad picks up Nirmala UI, Microsoft YaHei, Yu Gothic, Malgun, and Segoe UI Emoji automatically at startup if present.
 
 ## Building from source
 

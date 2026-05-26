@@ -25,6 +25,7 @@ use translator::{Translator, LANGUAGES};
 enum ViewMode {
     Record,
     Sessions,
+    Compact,
 }
 
 const ACCENT: egui::Color32 = egui::Color32::from_rgb(180, 140, 255);
@@ -73,6 +74,8 @@ struct AudioRecorder {
     session_cache_dir: String,
     selected_session: Option<usize>,
     selected_transcript: Option<String>,
+    compact_always_on_top: bool,
+    pending_view_switch: Option<ViewMode>,
 }
 
 impl Default for AudioRecorder {
@@ -141,6 +144,8 @@ impl Default for AudioRecorder {
             session_cache_dir: String::new(),
             selected_session: None,
             selected_transcript: None,
+            compact_always_on_top: true,
+            pending_view_switch: None,
         }
     }
 }
@@ -350,6 +355,118 @@ impl AudioRecorder {
             }
         }
         Ok(())
+    }
+
+    fn render_compact(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new("anuvaad")
+                    .size(13.0)
+                    .strong()
+                    .color(ACCENT),
+            );
+            if self.recording {
+                if let Some(t) = self.record_start {
+                    let e = t.elapsed().as_secs();
+                    ui.label(
+                        egui::RichText::new(format!("● {:02}:{:02}", e / 60, e % 60))
+                            .size(13.0)
+                            .color(egui::Color32::from_rgb(220, 80, 80)),
+                    );
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("⛶").on_hover_text("Expand").clicked() {
+                    self.pending_view_switch = Some(ViewMode::Record);
+                }
+                let aot_label = if self.compact_always_on_top {
+                    "📌"
+                } else {
+                    "📍"
+                };
+                if ui
+                    .small_button(aot_label)
+                    .on_hover_text("Toggle always-on-top")
+                    .clicked()
+                {
+                    self.compact_always_on_top = !self.compact_always_on_top;
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                            if self.compact_always_on_top {
+                                egui::WindowLevel::AlwaysOnTop
+                            } else {
+                                egui::WindowLevel::Normal
+                            },
+                        ));
+                }
+                let rec_label = if self.recording { "⏹" } else { "⏺" };
+                let rec_color = if self.recording {
+                    egui::Color32::from_rgb(220, 80, 80)
+                } else {
+                    SUCCESS
+                };
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(rec_label).size(15.0).color(rec_color),
+                        )
+                        .min_size(egui::vec2(28.0, 22.0)),
+                    )
+                    .on_hover_text(if self.recording { "Stop" } else { "Record" })
+                    .clicked()
+                {
+                    if self.recording {
+                        self.stop();
+                    } else {
+                        self.start();
+                    }
+                }
+            });
+        });
+
+        ui.add_space(2.0);
+        ui.separator();
+
+        egui::ScrollArea::vertical()
+            .id_salt("compact_transcript")
+            .auto_shrink([false, false])
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                let t = self.transcript.lock().unwrap();
+                let recent = t.committed.iter().rev().take(8).rev();
+                let mut any = false;
+                for line in recent {
+                    any = true;
+                    ui.add_space(2.0);
+                    ui.label(egui::RichText::new(&line.text).size(12.5).color(TEXT));
+                    if let Some(tr) = &line.translation {
+                        ui.label(
+                            egui::RichText::new(format!("→ {tr}"))
+                                .size(11.5)
+                                .italics()
+                                .color(TRANS_COLOR),
+                        );
+                    }
+                }
+                let prov: Vec<&TranscriptLine> = t
+                    .provisional_mic
+                    .iter()
+                    .chain(t.provisional_sys.iter())
+                    .collect();
+                for line in prov {
+                    any = true;
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new(&line.text)
+                            .size(12.5)
+                            .color(TEXT_DIM)
+                            .italics(),
+                    );
+                }
+                if !any {
+                    ui.weak("(waiting for audio…)");
+                }
+            });
     }
 
     fn render_sessions(&mut self, ui: &mut egui::Ui) {
@@ -570,6 +687,41 @@ impl eframe::App for AudioRecorder {
             }
         }
 
+        // Handle a pending view switch (resizes window + sets always-on-top before drawing this frame's contents)
+        if let Some(target) = self.pending_view_switch.take() {
+            self.view = target;
+            match target {
+                ViewMode::Compact => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                        360.0, 220.0,
+                    )));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        if self.compact_always_on_top {
+                            egui::WindowLevel::AlwaysOnTop
+                        } else {
+                            egui::WindowLevel::Normal
+                        },
+                    ));
+                }
+                _ => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                        900.0, 700.0,
+                    )));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        egui::WindowLevel::Normal,
+                    ));
+                }
+            }
+        }
+
+        if self.view == ViewMode::Compact {
+            self.render_compact(ui);
+            if self.recording {
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            }
+            return;
+        }
+
         {
             // Header with brand + view tabs
             ui.horizontal(|ui| {
@@ -585,10 +737,19 @@ impl eframe::App for AudioRecorder {
                         .color(egui::Color32::from_gray(140)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .button("⊟ Compact")
+                        .on_hover_text("Shrink to a tiny floating window")
+                        .clicked()
+                    {
+                        self.pending_view_switch = Some(ViewMode::Compact);
+                    }
                     let mut view = self.view;
                     ui.selectable_value(&mut view, ViewMode::Sessions, "📂 Sessions");
                     ui.selectable_value(&mut view, ViewMode::Record, "🎙 Record");
-                    self.view = view;
+                    if view != self.view {
+                        self.view = view;
+                    }
                 });
             });
             ui.add_space(4.0);
@@ -767,9 +928,8 @@ impl eframe::App for AudioRecorder {
                                 .selectable_label(i == current_size_idx, s.display)
                                 .clicked()
                             {
-                                let new_path = model::model_path_for(s.key)
-                                    .to_string_lossy()
-                                    .into_owned();
+                                let new_path =
+                                    model::model_path_for(s.key).to_string_lossy().into_owned();
                                 if new_path != self.model_path {
                                     self.model_path = new_path;
                                     self.whisper = None;
@@ -1079,6 +1239,45 @@ fn render_line(ui: &mut egui::Ui, line: &TranscriptLine, provisional: bool) {
     }
 }
 
+fn setup_fonts(ctx: &egui::Context) {
+    use egui::FontData;
+    let mut fonts = egui::FontDefinitions::default();
+
+    // Best-effort fallback fonts from the Windows install.
+    // Each is added to BOTH families so it can render glyphs the default font lacks.
+    let candidates: &[(&str, &str, u32)] = &[
+        ("nirmala", "C:\\Windows\\Fonts\\Nirmala.ttf", 0),
+        ("nirmala_b", "C:\\Windows\\Fonts\\NirmalaB.ttf", 0),
+        ("mangal", "C:\\Windows\\Fonts\\mangal.ttf", 0),
+        ("latha", "C:\\Windows\\Fonts\\latha.ttf", 0),
+        ("kartika", "C:\\Windows\\Fonts\\kartika.ttf", 0),
+        ("yahei", "C:\\Windows\\Fonts\\msyh.ttc", 0),
+        ("yugothic", "C:\\Windows\\Fonts\\YuGothR.ttc", 0),
+        ("malgun", "C:\\Windows\\Fonts\\malgun.ttf", 0),
+        ("emoji", "C:\\Windows\\Fonts\\seguiemj.ttf", 0),
+    ];
+
+    for (key, path, index) in candidates {
+        if let Ok(data) = std::fs::read(path) {
+            let mut font = FontData::from_owned(data);
+            font.index = *index;
+            fonts.font_data.insert((*key).to_string(), font.into());
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .push((*key).to_string());
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .push((*key).to_string());
+        }
+    }
+
+    ctx.set_fonts(fonts);
+}
+
 fn apply_theme(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = egui::Color32::from_rgb(22, 22, 28);
@@ -1118,6 +1317,7 @@ fn main() -> eframe::Result<()> {
         "anuvaad",
         options,
         Box::new(|cc| {
+            setup_fonts(&cc.egui_ctx);
             apply_theme(&cc.egui_ctx);
             Ok(Box::new(AudioRecorder::default()))
         }),

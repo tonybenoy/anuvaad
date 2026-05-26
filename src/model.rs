@@ -12,11 +12,31 @@ pub struct ModelSize {
 }
 
 pub const MODEL_SIZES: &[ModelSize] = &[
-    ModelSize { key: "tiny",      display: "tiny (75 MB) — fastest",                  approx_mb: 75 },
-    ModelSize { key: "base",      display: "base (142 MB) — default",                 approx_mb: 142 },
-    ModelSize { key: "small",     display: "small (466 MB) — recommended for non-English", approx_mb: 466 },
-    ModelSize { key: "medium",    display: "medium (1.5 GB) — high accuracy",         approx_mb: 1500 },
-    ModelSize { key: "large-v3",  display: "large-v3 (3 GB) — best",                  approx_mb: 3000 },
+    ModelSize {
+        key: "tiny",
+        display: "tiny (75 MB) — fastest",
+        approx_mb: 75,
+    },
+    ModelSize {
+        key: "base",
+        display: "base (142 MB) — default",
+        approx_mb: 142,
+    },
+    ModelSize {
+        key: "small",
+        display: "small (466 MB) — recommended for non-English",
+        approx_mb: 466,
+    },
+    ModelSize {
+        key: "medium",
+        display: "medium (1.5 GB) — high accuracy",
+        approx_mb: 1500,
+    },
+    ModelSize {
+        key: "large-v3",
+        display: "large-v3 (3 GB) — best",
+        approx_mb: 3000,
+    },
 ];
 
 pub fn models_dir() -> PathBuf {

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-Object -First 20)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(rustup *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(winget install *)",
+      "PowerShell(winget search *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(cargo build *)",
+      "PowerShell(Get-Item .\\\\target\\\\release\\\\anuvaad.exe | Select-Object Name, @{n=\"SizeMB\";e={[math]::Round\\($_.Length/1MB,2\\)}}, LastWriteTime)",
+      "PowerShell(cargo search *)",
+      "PowerShell(Get-Item .\\\\target\\\\release\\\\anuvaad.exe | Select-Object Name, @{n=\"SizeMB\";e={[math]::Round\\($_.Length/1MB,2\\)}}, LastWriteTime | Format-Table -AutoSize)",
+      "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); & \".\\\\target\\\\release\\\\anuvaad.exe\" 2>&1 | Select-Object -First 30)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "PowerShell(python -m pip install --upgrade pip; python -m pip install ctranslate2 transformers sentencepiece huggingface_hub)",
+      "PowerShell(Write-Output '{\"id\":1,\"text\":\"Hello, how are you today?\",\"src\":\"eng_Latn\",\"tgt\":\"hin_Deva\"}' | python C:\\\\Users\\\\tonyb\\\\anuvaad\\\\scripts\\\\translator.py 2>&1 | Select-Object -First 20)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}

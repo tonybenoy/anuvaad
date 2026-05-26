@@ -1,0 +1,16 @@
+[book]
+title = "anuvaad"
+description = "Real-time audio recorder, transcriber, and translator for Windows"
+authors = ["Tony Benoy"]
+language = "en"
+src = "docs"
+
+[output.html]
+git-repository-url = "https://github.com/tonybenoy/anuvaad"
+edit-url-template = "https://github.com/tonybenoy/anuvaad/edit/main/{path}"
+default-theme = "navy"
+preferred-dark-theme = "navy"
+no-section-label = true
+
+[output.html.search]
+enable = true

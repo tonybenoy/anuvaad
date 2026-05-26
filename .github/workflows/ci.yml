@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check & test (Windows CPU)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install LLVM
+        run: choco install llvm -y --no-progress
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        shell: pwsh
+        run: cargo clippy --release -- -D warnings
+        env:
+          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+
+      - name: Build
+        shell: pwsh
+        run: cargo build --release
+        env:
+          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'

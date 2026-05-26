@@ -1,0 +1,29 @@
+[package]
+name = "anuvaad"
+version = "0.1.0"
+edition = "2021"
+authors = ["Tony Benoy <tonybenoy@gmail.com>"]
+description = "Real-time audio recorder, transcriber, and translator for Windows"
+license = "MIT"
+repository = "https://github.com/tonybenoy/anuvaad"
+readme = "README.md"
+
+[dependencies]
+cpal = "0.17"
+hound = "3.5"
+eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow"] }
+egui = "0.34"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+whisper-rs = "0.16"
+ureq = "3"
+num_cpus = "1"
+serde_json = "1"
+
+[features]
+default = []
+cuda = ["whisper-rs/cuda"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

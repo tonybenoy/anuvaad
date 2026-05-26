@@ -1,0 +1,21 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Build outputs
+/book
+
+# IDE
+.idea/
+.vscode/
+.claude/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test recordings (local)
+*.wav
+*.tmp
+*.part
